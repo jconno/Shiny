@@ -1,0 +1,162 @@
+---
+title: "data 608 HW 3"
+author: "Joe Connolly"
+date: '2022-03-12'
+output: 
+  html_document:
+    code_folding: hide
+runtime: shiny 
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, warning = FALSE, message = FALSE}
+library(shiny)
+library(shinythemes)
+library(rsconnect)
+library(ggplot2)
+library(Hmisc)
+library(dplyr)
+library(plotly)
+library(tidyr)
+library(RCurl)
+```
+
+```{r}
+options(rsconnect.max.bundle.size=3145728000)
+```
+
+```{r}
+setAccountInfo(name='jconnolly',
+			  token='09349C4C1292708F6957FA1C5D05B8B8',
+			  secret='Ndt34asUUQlQRasZbvAVXqu4aZ20LPU2sKG3gHk9')
+```
+
+```{r}
+link <- "https://raw.githubusercontent.com/charleyferrari/CUNY_DATA_608/master/module3/data/cleaned-cdc-mortality-1999-2010-2.csv"
+
+data <- read.csv(link)
+```
+
+```{r}
+head(data)
+```
+
+```{r}
+summary(data)
+str(data)
+```
+
+```{r}
+hist.data.frame(data[4:6])
+```
+
+-   [Histogram for all columns in dataframe](%5BHow%20to%20create%20histogram%20of%20all%20columns%20in%20an%20R%20data%20frame?%20(tutorialspoint.com)%5D(https://www.tutorialspoint.com/how-to-create-histogram-of-all-columns-in-an-r-data-frame#:~:text=To%20create%20histogram%20of%20all%20columns%20in%20an,using%20a%20single%20line%20code%20as%20hist.data.frame%20%28df%29.))
+
+    ## Question 1
+
+    #### For the year 2010, create a visualization for the crude mortality rate across all US States from one cause. Within this visualization, rank States by crude mortality per each cause of death
+
+    ```{r}
+    sort(table(data$ICD.Chapter))
+    ```
+
+    ```{r}
+    data2010_cancer_cancer <- filter(data, Year == 2010 & ICD.Chapter == "Neoplasms")
+
+    data2010_cancer_cancer <- data2010_cancer_cancer %>% arrange(State, Crude.Rate)
+
+    head(data2010_cancer_cancer)
+    ```
+
+    ```{r}
+    # Checking ICD.Chapter is only Neoplasms...
+
+    sort(table(data2010_cancer_cancer$ICD.Chapter))
+    ```
+
+    #### Creating a plot
+
+    ```{r}
+    plot <-  plot_ly(x = data2010_cancer_cancer$Crude.Rate, y = data2010_cancer_cancer$State, type = "bar", text = "Cancer Rate by States", textposition = "auto", color = I("deepskyblue"), orientation = "h")
+    ```
+
+### Incorporating Shiny
+
+```{r, shny_ui, eval=TRUE}
+ui1 <- fluidPage(
+  plotlyOutput("plot"),
+  verbatimTextOutput("event")
+)
+```
+
+```{r, shny_server, eval=TRUE}
+server1 <- function(input, output){
+  
+  output$plot <- renderPlotly({
+    plot
+  })
+  
+  output$event <- renderPrint({
+    w <- event_data("plotly_hover")
+    if (is.null(w)) "Move cursor over bars to see data" else w
+  })
+}
+
+shinyApp(ui1, server1, options = list(height = 1000, width = 1000))
+```
+
+## Question 2
+
+#### Create a visualization regarding whether or not certain states are improving their mortality rates, in regards to a certain cause of death, faster or slower than the national average. The visualization must show the cause of death at the time. National average should be weighted by the national population
+
+```{r}
+mortality <- data %>% group_by(ICD.Chapter, Year) %>% mutate(National.Ave = sum(Deaths)*1e4/sum(Population))
+```
+
+```{r}
+feature1 <- mortality$State
+
+feature2 <- mortality$ICD.Chapter
+
+ui2 <- fluidPage(
+  headerPanel("Annual Mortality Rate by State"),
+  
+  sidebarPanel(
+    selectInput(inputId = "featureInput1", label = "Select States", choices = feature1, selected = ""),
+    
+    selectInput(inputId = "featureInput2", label = "Select Disease Category", choices = feature2, selected = "")),
+  
+  mainPanel(
+    plotlyOutput("trendplot")
+  )
+)
+```
+
+```{r}
+server2 <- function(input, output){
+  
+  observeEvent(input$featureInput2,{
+    
+  dataset <- mortality[which(mortality$State == input$featureInput & mortality$ICD.Chapter == input$featureInput2),]  
+  
+  output$trendPlot <- renderPlotly({
+    plot_ly(dataset, x = ~Year, y = ~Crude.Rate, type = "scatter", name = input$FeatureInput1, mode = "lines+markers", source = "subset") %>%
+      layout(title = paste("Mortality and Year for", input$featureInput1, "and", input$featureInput2),
+             xaxis = list(title = "Year"),
+             yaxis = list(title = "Deaths per 10,000"),
+             dragmode = "select",
+             plot_bgcolor = "white") %>%
+      add_trace(y = ~dataset$National.Ave, name = "National Average", mode = "lines+markers")
+  })
+  })
+}
+
+shinyApp(ui2, server2, options = list(height = 800, width = 1200))
+```
+
+```{r}
+deployApp()
+```
